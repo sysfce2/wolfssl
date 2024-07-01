@@ -251,7 +251,7 @@ function(generate_build_flags)
     endif()
     set(BUILD_EXAMPLE_CLIENTS ${WOLFSSL_EXAMPLES} PARENT_SCOPE)
     set(BUILD_TESTS ${WOLFSSL_EXAMPLES} PARENT_SCOPE)
-    if(NOT WOLFSSL_SINGLETHREADED AND WOLFSSL_EXAMPLES AND NOT WOLFSSL_LEAN_TLS)
+    if(NOT WOLFSSL_SINGLE_THREADED AND WOLFSSL_EXAMPLES AND NOT WOLFSSL_LEAN_TLS)
         set(BUILD_THREADED_EXAMPLES "yes" PARENT_SCOPE)
     endif()
     set(BUILD_WOLFCRYPT_TESTS ${WOLFSSL_CRYPT_TESTS} PARENT_SCOPE)
@@ -916,35 +916,6 @@ function(generate_lib_src_list LIB_SOURCES)
     endif()
 
     set(LIB_SOURCES ${LIB_SOURCES} PARENT_SCOPE)
-endfunction()
-
-function(add_to_options_file DEFINITIONS OPTION_FILE)
-    list(REMOVE_DUPLICATES DEFINITIONS)
-    foreach(DEF IN LISTS DEFINITIONS)
-        if(DEF MATCHES "^-D")
-            if(DEF MATCHES "^-D(N)?DEBUG(=.+)?")
-                message("not outputting (N)DEBUG to ${OPTION_FILE}")
-            endif()
-
-            # allow user to ignore system options
-            if(DEF MATCHES "^-D_.*")
-                file(APPEND ${OPTION_FILE} "#ifndef WOLFSSL_OPTIONS_IGNORE_SYS\n")
-            endif()
-
-            string(REGEX REPLACE "^-D" "" DEF_NO_PREFIX ${DEF})
-            string(REGEX REPLACE "=.*$" "" DEF_NO_EQUAL_NO_VAL ${DEF_NO_PREFIX})
-            string(REPLACE "=" " " DEF_NO_EQUAL ${DEF_NO_PREFIX})
-
-            file(APPEND ${OPTION_FILE} "#undef  ${DEF_NO_EQUAL_NO_VAL}\n")
-            file(APPEND ${OPTION_FILE} "#define ${DEF_NO_EQUAL}\n")
-
-            if(DEF MATCHES "^-D_.*")
-                file(APPEND ${OPTION_FILE} "#endif\n")
-            endif()
-
-            file(APPEND ${OPTION_FILE} "\n")
-        endif()
-    endforeach()
 endfunction()
 
 # Function: set_wolfssl_definitions

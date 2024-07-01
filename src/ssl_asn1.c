@@ -974,7 +974,8 @@ static int wolfssl_a2i_asn1_integer_clear_to_eol(char* str, int len, int* cont)
     nLen = 1;
     for (i = 0; i < len; i++) {
         /* Check if character is a hexadecimal character. */
-        if (Base16_Decode((const byte*)str + i, 1, &num, &nLen) == ASN_INPUT_E)
+        if (Base16_Decode((const byte*)str + i, 1, &num, &nLen) ==
+            WC_NO_ERR_TRACE(ASN_INPUT_E))
         {
             /* Found end of hexadecimal characters, return count. */
             len = i;
@@ -3509,14 +3510,17 @@ WOLFSSL_ASN1_TIME* wolfSSL_ASN1_TIME_to_generalizedtime(WOLFSSL_ASN1_TIME *t,
     if (ret != NULL) {
         /* Set the ASN.1 type and length of string. */
         ret->type = V_ASN1_GENERALIZEDTIME;
-        ret->length = ASN_GENERALIZED_TIME_SIZE;
 
         if (t->type == V_ASN1_GENERALIZEDTIME) {
+            ret->length = ASN_GENERALIZED_TIME_SIZE;
+
             /* Just copy as data already appropriately formatted. */
             XMEMCPY(ret->data, t->data, ASN_GENERALIZED_TIME_SIZE);
         }
         else {
             /* Convert UTC TIME to GENERALIZED TIME. */
+            ret->length = t->length + 2; /* Add two extra year digits */
+
             if (t->data[0] >= '5') {
                 /* >= 50 is 1900s.  */
                 ret->data[0] = '1'; ret->data[1] = '9';
@@ -3526,7 +3530,7 @@ WOLFSSL_ASN1_TIME* wolfSSL_ASN1_TIME_to_generalizedtime(WOLFSSL_ASN1_TIME *t,
                 ret->data[0] = '2'; ret->data[1] = '0';
             }
             /* Append rest of the data as it is the same. */
-            XMEMCPY(&ret->data[2], t->data, ASN_UTC_TIME_SIZE);
+            XMEMCPY(&ret->data[2], t->data, t->length);
         }
 
         /* Check for pointer to return result through. */

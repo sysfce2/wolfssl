@@ -353,7 +353,7 @@ static int ProcessUserChain(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
                    chain.buffer, &idx, (word32)maxSz);
             }
             /* PEM may have trailing data that can be ignored. */
-            if ((ret == ASN_NO_PEM_HEADER) && gotOne) {
+            if ((ret == WC_NO_ERR_TRACE(ASN_NO_PEM_HEADER)) && gotOne) {
                 WOLFSSL_MSG("We got one good cert, so stuff at end ok");
                 ret = 0;
                 break;
@@ -852,7 +852,6 @@ static int ProcessBufferTryDecodeEd448(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
 }
 #endif /* HAVE_ED448 && HAVE_ED448_KEY_IMPORT */
 
-#if defined(HAVE_PQC)
 #if defined(HAVE_FALCON)
 /* See if DER data is an Falcon private key.
  *
@@ -943,7 +942,8 @@ static int ProcessBufferTryDecodeFalcon(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
 }
 #endif
 
-#if defined(HAVE_DILITHIUM)
+#if defined(HAVE_DILITHIUM) && !defined(WOLFSSL_DILITHIUM_NO_SIGN) && \
+    !defined(WOLFSSL_DILITHIUM_NO_ASN1)
 /* See if DER data is an Dilithium private key.
  *
  * Checks size meets minimum Falcon key size.
@@ -963,6 +963,7 @@ static int ProcessBufferTryDecodeDilithium(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
     DerBuffer* der, int* keyFormat, void* heap, byte* keyType, int* keySize)
 {
     int ret;
+    word32 idx;
     dilithium_key* key;
 
     /* Allocate a Dilithium key to parse into. */
@@ -997,7 +998,8 @@ static int ProcessBufferTryDecodeDilithium(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
 
     if (ret == 0) {
         /* Decode as a Dilithium private key. */
-        ret = wc_dilithium_import_private_only(der->buffer, der->length, key);
+        idx = 0;
+        ret = wc_Dilithium_PrivateKeyDecode(der->buffer, &idx, key, der->length);
         if (ret == 0) {
             /* Get the minimum Dilithium key size from SSL or SSL context
              * object. */
@@ -1040,7 +1042,6 @@ static int ProcessBufferTryDecodeDilithium(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
     return ret;
 }
 #endif /* HAVE_DILITHIUM */
-#endif /* HAVE_PQC */
 
 /* Try to decode DER data is a known private key.
  *
@@ -1143,7 +1144,6 @@ static int ProcessBufferTryDecode(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
             keyType, keySz);
     }
 #endif /* HAVE_ED448 && HAVE_ED448_KEY_IMPORT */
-#if defined(HAVE_PQC)
 #if defined(HAVE_FALCON)
     /* Try Falcon if key format is Falcon level 1k or 5k or yet unknown. */
     if ((ret == 0) && ((*keyFormat == 0) || (*keyFormat == FALCON_LEVEL1k) ||
@@ -1152,7 +1152,8 @@ static int ProcessBufferTryDecode(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
             keyType, keySz);
     }
 #endif /* HAVE_FALCON */
-#if defined(HAVE_DILITHIUM)
+#if defined(HAVE_DILITHIUM) && !defined(WOLFSSL_DILITHIUM_NO_SIGN) && \
+    !defined(WOLFSSL_DILITHIUM_NO_ASN1)
     /* Try Falcon if key format is Dilithium level 2k, 3k or 5k or yet unknown.
      */
     if ((ret == 0) && ((*keyFormat == 0) || (*keyFormat == DILITHIUM_LEVEL2k) ||
@@ -1162,7 +1163,6 @@ static int ProcessBufferTryDecode(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
             keyType, keySz);
     }
 #endif /* HAVE_DILITHIUM */
-#endif /* HAVE_PQC */
 
     /* Check we know the format. */
     if ((ret == 0) && (*keyFormat == 0)) {
@@ -1467,8 +1467,7 @@ static void wolfssl_set_have_from_key_oid(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
             }
             break;
     #endif
-    #ifdef HAVE_PQC
-        #ifdef HAVE_FALCON
+    #ifdef HAVE_FALCON
         case FALCON_LEVEL1k:
         case FALCON_LEVEL5k:
             if (ssl != NULL) {
@@ -1478,8 +1477,8 @@ static void wolfssl_set_have_from_key_oid(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
                 ctx->haveFalconSig = 1;
             }
             break;
-        #endif /* HAVE_FALCON */
-        #ifdef HAVE_DILITHIUM
+    #endif /* HAVE_FALCON */
+    #ifdef HAVE_DILITHIUM
         case DILITHIUM_LEVEL2k:
         case DILITHIUM_LEVEL3k:
         case DILITHIUM_LEVEL5k:
@@ -1490,8 +1489,7 @@ static void wolfssl_set_have_from_key_oid(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
                 ctx->haveDilithiumSig = 1;
             }
             break;
-        #endif /* HAVE_DILITHIUM */
-    #endif /* HAVE_PQC */
+    #endif /* HAVE_DILITHIUM */
         default:
             WOLFSSL_MSG("Cert key not supported");
             break;
@@ -1539,7 +1537,6 @@ static void ProcessBufferCertSetHave(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
                 ctx->haveECDSAsig = 1;
             }
             break;
-#ifdef HAVE_PQC
     #ifdef HAVE_FALCON
         case CTC_FALCON_LEVEL1:
         case CTC_FALCON_LEVEL5:
@@ -1565,14 +1562,13 @@ static void ProcessBufferCertSetHave(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
             }
             break;
     #endif
-#endif
         default:
             WOLFSSL_MSG("Cert signature not supported");
             break;
     }
 
 #if defined(HAVE_ECC) || defined(HAVE_ED25519) || defined(HAVE_ED448) || \
-    (defined(HAVE_PQC) && defined(HAVE_LIBOQS)) || !defined(NO_RSA)
+    defined(HAVE_FALCON) || defined(HAVE_DILITHIUM) || !defined(NO_RSA)
     #if defined(HAVE_ECC) || defined(HAVE_ED25519) || defined(HAVE_ED448)
     /* Set the private key curve OID. */
     if (ssl != NULL) {
@@ -1702,7 +1698,6 @@ static int ProcessBufferCertPublicKey(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
             }
             break;
     #endif /* HAVE_ED448 */
-    #if defined(HAVE_PQC)
     #if defined(HAVE_FALCON)
         case FALCON_LEVEL1k:
             keyType = falcon_level1_sa_algo;
@@ -1757,7 +1752,6 @@ static int ProcessBufferCertPublicKey(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
             }
             break;
     #endif /* HAVE_DILITHIUM */
-    #endif /* HAVE_PQC */
 
         default:
             WOLFSSL_MSG("No key size check done on public key in certificate");
@@ -1893,7 +1887,6 @@ static int ProcessBufferCertAltPublicKey(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
             }
             break;
     #endif /* HAVE_ED448 */
-    #if defined(HAVE_PQC)
     #if defined(HAVE_FALCON)
         case FALCON_LEVEL1k:
             keyType = falcon_level1_sa_algo;
@@ -1948,7 +1941,6 @@ static int ProcessBufferCertAltPublicKey(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
             }
             break;
     #endif /* HAVE_DILITHIUM */
-    #endif /* HAVE_PQC */
 
         default:
             /* In this case, there was an OID that we didn't recognize.
@@ -2363,7 +2355,7 @@ int ProcessBuffer(WOLFSSL_CTX* ctx, const unsigned char* buff, long sz,
             ret = ProcessUserChain(ctx, ssl, buff, sz, format, type, used, info,
                 verify);
             /* Additional chain is optional */
-            if (ret == ASN_NO_PEM_HEADER) {
+            if (ret == WC_NO_ERR_TRACE(ASN_NO_PEM_HEADER)) {
                 unsigned long pemErr = 0;
                 CLEAR_ASN_NO_PEM_HEADER_ERROR(pemErr);
                 ret = 0;
@@ -2459,7 +2451,7 @@ static int ProcessChainBuffer(WOLFSSL_CTX* ctx, WOLFSSL* ssl,
         ret = ProcessBuffer(ctx, buff + used, sz - used, WOLFSSL_FILETYPE_PEM,
             type, ssl, &consumed, 0, verify);
         /* Memory allocation failure is fatal. */
-        if (ret == MEMORY_E) {
+        if (ret == WC_NO_ERR_TRACE(MEMORY_E)) {
             gotOne = 0;
         }
         /* Other error parsing. */
@@ -2658,7 +2650,7 @@ static int wolfssl_ctx_load_path_file(WOLFSSL_CTX* ctx, const char* name,
         /* When ignoring errors or loading PEM only and no PEM. don't fail. */
         if ((flags & WOLFSSL_LOAD_FLAG_IGNORE_ERR) ||
                 ((flags & WOLFSSL_LOAD_FLAG_PEM_CA_ONLY) &&
-                 (ret == ASN_NO_PEM_HEADER))) {
+                 (ret == WC_NO_ERR_TRACE(ASN_NO_PEM_HEADER)))) {
             unsigned long err = 0;
             CLEAR_ASN_NO_PEM_HEADER_ERROR(err);
         #if defined(WOLFSSL_QT)
@@ -2745,7 +2737,7 @@ static int wolfssl_ctx_load_path(WOLFSSL_CTX* ctx, const char* path,
             ret = fileRet;
         #if defined(WOLFSSL_QT) || defined(WOLFSSL_IGNORE_BAD_CERT_PATH)
             /* Ignore bad path error when flag set. */
-            if ((ret == BAD_PATH_ERROR) &&
+            if ((ret == WC_NO_ERR_TRACE(BAD_PATH_ERROR)) &&
                     (flags & WOLFSSL_LOAD_FLAG_IGNORE_BAD_PATH_ERR)) {
                /* QSslSocket always loads certs in system folder
                 * when it is initialized.
@@ -5212,6 +5204,8 @@ static int wolfssl_set_tmp_dh(WOLFSSL* ssl, unsigned char* p, int pSz,
 
     /* Allocate space for cipher suites. */
     if ((ret == 1) && (AllocateSuites(ssl) != 0)) {
+        ssl->buffers.serverDH_P.buffer = NULL;
+        ssl->buffers.serverDH_G.buffer = NULL;
         ret = 0;
     }
     if (ret == 1) {
@@ -5259,8 +5253,6 @@ int wolfSSL_SetTmpDH(WOLFSSL* ssl, const unsigned char* p, int pSz,
         pAlloc = (byte*)XMALLOC(pSz, ssl->heap, DYNAMIC_TYPE_PUBLIC_KEY);
         gAlloc = (byte*)XMALLOC(gSz, ssl->heap, DYNAMIC_TYPE_PUBLIC_KEY);
         if ((pAlloc == NULL) || (gAlloc == NULL)) {
-            XFREE(pAlloc, ssl->heap, DYNAMIC_TYPE_PUBLIC_KEY);
-            XFREE(gAlloc, ssl->heap, DYNAMIC_TYPE_PUBLIC_KEY);
             ret = MEMORY_E;
         }
     }
