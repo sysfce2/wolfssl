@@ -568,6 +568,7 @@ typedef struct testVector {
     #define WOLFSSL_TEST_SUBROUTINE
 #endif
 
+WOLFSSL_TEST_SUBROUTINE wc_test_ret_t  macro_test(void);
 WOLFSSL_TEST_SUBROUTINE wc_test_ret_t  error_test(void);
 WOLFSSL_TEST_SUBROUTINE wc_test_ret_t  base64_test(void);
 WOLFSSL_TEST_SUBROUTINE wc_test_ret_t  base16_test(void);
@@ -1466,6 +1467,10 @@ WOLFSSL_TEST_SUBROUTINE wc_test_ret_t nist_sp80056c_kdf_test(void)
         WC_HASH_TYPE_SHA256, output, 16);
     if (ret != WC_NO_ERR_TRACE(BAD_FUNC_ARG))
         return WC_TEST_RET_ENC_NC;
+    ret = wc_KDA_KDF_onestep((byte*)"secret", sizeof("secret"), NULL, 0, 16,
+        WC_HASH_TYPE_NONE, output, 16);
+    if (ret != WC_NO_ERR_TRACE(BAD_FUNC_ARG))
+        return WC_TEST_RET_ENC_NC;
 
     /* allow empty FixedInfo */
     ret = wc_KDA_KDF_onestep((byte*)"secret", sizeof("secret"), NULL, 0, 16,
@@ -2005,6 +2010,11 @@ options: [-s max_relative_stack_bytes] [-m max_relative_heap_memory_bytes]\n\
     else
         TEST_PASS("CAVP selftest passed!\n");
 #endif
+
+    if ( (ret = macro_test()) != 0)
+        TEST_FAIL("macro    test failed!\n", ret);
+    else
+        TEST_PASS("macro    test passed!\n");
 
     if ( (ret = error_test()) != 0)
         TEST_FAIL("error    test failed!\n", ret);
@@ -3198,6 +3208,364 @@ static wc_test_ret_t _SaveDerAndPem(const byte* der, int derSz,
     return 0;
 }
 #endif /* WOLFSSL_KEY_GEN || WOLFSSL_CERT_GEN */
+
+static wc_test_ret_t safe_sum_word32_test(void) {
+    word32 out;
+    int ret;
+    int i;
+
+    static const struct {
+        word32 a;
+        word32 b;
+        word32 e;
+        int t;
+    } cases[] = {
+    #define u_max 4294967295U
+    #define half (4294967295U / 2U)
+        { 0, 0, 0, 1 },
+        { 1, 1, 2, 1 },
+        { u_max, 0, u_max, 1 },
+        { u_max - 1, 1, u_max, 1 },
+        { u_max, 1, u_max, 0 },
+        { 0, u_max, u_max, 1 },
+        { half, half, half * 2U, 1 },
+        { u_max - 1, 2, u_max, 0 }
+    #undef half
+    #undef u_max
+    };
+
+    for (i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); ++i) {
+        ret = WC_SAFE_SUM_UNSIGNED_CLIP(word32, cases[i].a, cases[i].b, out);
+        if (out != cases[i].e || ret != cases[i].t)
+            return WC_TEST_RET_ENC_I(i);
+        out = 10;
+        ret = WC_SAFE_SUM_UNSIGNED(word32, cases[i].a, cases[i].b, out);
+        if ((ret != cases[i].t) || (ret && (out != cases[i].e)))
+            return WC_TEST_RET_ENC_I(i);
+    }
+
+    return 0;
+}
+
+static wc_test_ret_t safe_sub_word32_test(void) {
+    word32 out;
+    int ret;
+    int i;
+
+    static const struct {
+        word32 a;
+        word32 b;
+        word32 e;
+        int t;
+    } cases[] = {
+    #define u_max 4294967295U
+        { 5, 3, 2, 1 },
+        { 0, 0, 0, 1 },
+        { 1, 0, 1, 1 },
+        { 0, 1, 0, 0 },
+        { u_max, u_max, 0, 1 },
+        { u_max, 0, u_max, 1 },
+        { u_max, 1, u_max - 1, 1 },
+        { 1, 2, 0, 0 },
+    #undef u_max
+    };
+
+    for (i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); ++i) {
+        ret = WC_SAFE_SUB_UNSIGNED_CLIP(word32, cases[i].a, cases[i].b, out);
+        if (out != cases[i].e || ret != cases[i].t)
+            return WC_TEST_RET_ENC_I(i);
+        out = 10;
+        ret = WC_SAFE_SUB_UNSIGNED(word32, cases[i].a, cases[i].b, out);
+        if ((ret != cases[i].t) || (ret && (out != cases[i].e)))
+            return WC_TEST_RET_ENC_I(i);
+    }
+
+    return 0;
+}
+
+static wc_test_ret_t safe_sum_sword32_test(void) {
+    sword32 out;
+    int ret;
+    int i;
+
+    static const struct {
+        sword32 a;
+        sword32 b;
+        sword32 e;
+        int t;
+    } cases[] = {
+    #define i_max 2147483647
+    #define i_min (-i_max - 1)
+    #define half (i_max / 2)
+        { 0, 0, 0, 1 },
+        { 1, 1, 2, 1 },
+        { i_max, 0, i_max, 1 },
+        { i_max - 1, 1, i_max, 1 },
+        { i_max, 1, i_max, 0 },
+        { 0, i_max, i_max, 1 },
+        { -1, -1, -2, 1 },
+        { i_min, 0, i_min, 1 },
+        { i_min + 1, -1, i_min, 1 },
+        { i_min, -1, i_min, 0 },
+        { 1, -1, 0, 1 },
+        { -1, 1, 0, 1 },
+        { half, half + 1, i_max, 1 },
+        { half + 1, half + 1, i_max, 0 }
+    #undef half
+    #undef i_min
+    #undef i_max
+    };
+
+    for (i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); ++i) {
+        ret = WC_SAFE_SUM_SIGNED_CLIP(sword32, cases[i].a, cases[i].b, out);
+        if (out != cases[i].e || ret != cases[i].t)
+            return WC_TEST_RET_ENC_I(i);
+        out = 10;
+        ret = WC_SAFE_SUM_SIGNED(sword32, cases[i].a, cases[i].b, out);
+        if ((ret != cases[i].t) || (ret && (out != cases[i].e)))
+            return WC_TEST_RET_ENC_I(i);
+    }
+
+    return 0;
+}
+
+static wc_test_ret_t safe_sub_sword32_test(void) {
+    sword32 out;
+    int ret;
+    int i;
+
+    static const struct {
+        sword32 a;
+        sword32 b;
+        sword32 e;
+        int t;
+    } cases[] = {
+    #define i_max 2147483647
+    #define i_min (-i_max - 1)
+        { 0, 0, 0, 1 },
+        { 5, 3, 2, 1 },
+        { 1, -1, 2, 1 },
+        { i_max, 0, i_max, 1 },
+        { i_max, -1, i_max, 0 },
+        { -5, -3, -2, 1 },
+        { 0, 1, -1, 1 },
+        { i_min, 0, i_min, 1 },
+        { i_min + 1, 1, i_min, 1 },
+        { i_min, 1, i_min, 0 },
+        { 1, 2, -1, 1 },
+        { -1, -2, 1, 1 },
+        { -1, i_min, i_max, 1 },
+        { i_min, -1, i_min + 1, 1 },
+        { 2, -3, 5, 1 }
+    #undef i_min
+    #undef i_max
+    };
+
+    for (i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); ++i) {
+        ret = WC_SAFE_SUB_SIGNED_CLIP(sword32, cases[i].a, cases[i].b, out);
+        if (out != cases[i].e || ret != cases[i].t)
+            return WC_TEST_RET_ENC_I(i);
+        out = 10;
+        ret = WC_SAFE_SUB_SIGNED(sword32, cases[i].a, cases[i].b, out);
+        if ((ret != cases[i].t) || (ret && (out != cases[i].e)))
+            return WC_TEST_RET_ENC_I(i);
+    }
+
+    return 0;
+}
+
+#ifdef WORD64_AVAILABLE
+static wc_test_ret_t safe_sum_word64_test(void) {
+    word64 out;
+    int ret;
+    int i;
+
+    static const struct {
+        word64 a;
+        word64 b;
+        word64 e;
+        int t;
+    } cases[] = {
+    #define u_max W64LIT(18446744073709551615)
+    #define half (u_max / 2)
+        { 0, 0, 0, 1 },
+        { 1, 1, 2, 1 },
+        { u_max, 0, u_max, 1 },
+        { u_max - 1, 1, u_max, 1 },
+        { u_max, 1, u_max, 0 },
+        { 0, u_max, u_max, 1 },
+        { half, half, half * 2ULL, 1 },
+        { u_max - 1, 2, u_max, 0 }
+    #undef half
+    #undef u_max
+    };
+
+    for (i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); ++i) {
+        ret = WC_SAFE_SUM_UNSIGNED_CLIP(word64, cases[i].a, cases[i].b, out);
+        if (out != cases[i].e || ret != cases[i].t)
+            return WC_TEST_RET_ENC_I(i);
+        out = 10;
+        ret = WC_SAFE_SUM_UNSIGNED(word64, cases[i].a, cases[i].b, out);
+        if ((ret != cases[i].t) || (ret && (out != cases[i].e)))
+            return WC_TEST_RET_ENC_I(i);
+    }
+
+    return 0;
+}
+
+static wc_test_ret_t safe_sub_word64_test(void) {
+    word64 out;
+    int ret;
+    int i;
+
+    static const struct {
+        word64 a;
+        word64 b;
+        word64 e;
+        int t;
+    } cases[] = {
+    #define u_max W64LIT(18446744073709551615)
+        { 5, 3, 2, 1 },
+        { 0, 0, 0, 1 },
+        { 1, 0, 1, 1 },
+        { 0, 1, 0, 0 },
+        { u_max, u_max, 0, 1 },
+        { u_max, 0, u_max, 1 },
+        { u_max, 1, u_max - 1, 1 },
+        { 1, 2, 0, 0 }
+    #undef u_max
+    };
+
+    for (i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); ++i) {
+        ret = WC_SAFE_SUB_UNSIGNED_CLIP(word64, cases[i].a, cases[i].b, out);
+        if (out != cases[i].e || ret != cases[i].t)
+            return WC_TEST_RET_ENC_I(i);
+        out = 10;
+        ret = WC_SAFE_SUB_UNSIGNED(word64, cases[i].a, cases[i].b, out);
+        if ((ret != cases[i].t) || (ret && (out != cases[i].e)))
+            return WC_TEST_RET_ENC_I(i);
+    }
+
+    return 0;
+}
+
+static wc_test_ret_t safe_sum_sword64_test(void) {
+    sword64 out;
+    int ret;
+    int i;
+
+    static const struct {
+        sword64 a;
+        sword64 b;
+        sword64 e;
+        int t;
+    } cases[] = {
+    #define i_max SW64LIT(9223372036854775807)
+    #define i_min (-i_max-1)
+    #define half (i_max / 2)
+        { 0, 0, 0, 1 },
+        { 1, 1, 2, 1 },
+        { i_max, 0, i_max, 1 },
+        { i_max - 1, 1, i_max, 1 },
+        { i_max, 1, i_max, 0 },
+        { 0, i_max, i_max, 1 },
+        { -1, -1, -2, 1 },
+        { i_min, 0, i_min, 1 },
+        { i_min + 1, -1, i_min, 1 },
+        { i_min, -1, i_min, 0 },
+        { 1, -1, 0, 1 },
+        { -1, 1, 0, 1 },
+        { half, half + 1, i_max, 1 },
+        { half + 1, half + 1, i_max, 0 }
+    #undef half
+    #undef i_min
+    #undef i_max
+    };
+
+    for (i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); ++i) {
+        ret = WC_SAFE_SUM_SIGNED_CLIP(sword64, cases[i].a, cases[i].b, out);
+        if (out != cases[i].e || ret != cases[i].t)
+            return WC_TEST_RET_ENC_I(i);
+        out = 10;
+        ret = WC_SAFE_SUM_SIGNED(sword64, cases[i].a, cases[i].b, out);
+        if ((ret != cases[i].t) || (ret && (out != cases[i].e)))
+            return WC_TEST_RET_ENC_I(i);
+    }
+
+    return 0;
+}
+
+static wc_test_ret_t safe_sub_sword64_test(void) {
+    sword64 out;
+    int ret;
+    int i;
+
+    static const struct {
+        sword64 a;
+        sword64 b;
+        sword64 e;
+        int t;
+    } cases[] = {
+    #define i_max SW64LIT(9223372036854775807)
+    #define i_min (-i_max-1)
+        { 0, 0, 0, 1 },
+        { 5, 3, 2, 1 },
+        { 1, -1, 2, 1 },
+        { i_max, 0, i_max, 1 },
+        { i_max, -1, i_max, 0 },
+        { -5, -3, -2, 1 },
+        { 0, 1, -1, 1 },
+        { i_min, 0, i_min, 1 },
+        { i_min + 1, 1, i_min, 1 },
+        { i_min, 1, i_min, 0 },
+        { 1, 2, -1, 1 },
+        { -1, -2, 1, 1 },
+        { -1, i_min, i_max, 1 },
+        { i_min, -1, i_min + 1, 1 },
+        { 2, -3, 5, 1 }
+    #undef i_min
+    #undef i_max
+    };
+
+    for (i = 0; i < (int)(sizeof(cases) / sizeof(cases[0])); ++i) {
+        ret = WC_SAFE_SUB_SIGNED_CLIP(sword64, cases[i].a, cases[i].b, out);
+        if (out != cases[i].e || ret != cases[i].t)
+            return WC_TEST_RET_ENC_I(i);
+        out = 10;
+        ret = WC_SAFE_SUB_SIGNED(sword64, cases[i].a, cases[i].b, out);
+        if ((ret != cases[i].t) || (ret && (out != cases[i].e)))
+            return WC_TEST_RET_ENC_I(i);
+    }
+
+    return 0;
+}
+#endif /* WORD64_AVAILABLE */
+
+WOLFSSL_TEST_SUBROUTINE wc_test_ret_t macro_test(void)
+{
+    wc_test_ret_t ret;
+
+    ret = safe_sum_word32_test();
+    if (ret == 0)
+        ret = safe_sub_word32_test();
+    if (ret == 0)
+        ret = safe_sum_sword32_test();
+    if (ret == 0)
+        ret = safe_sub_sword32_test();
+
+#ifdef WORD64_AVAILABLE
+    if (ret == 0)
+        ret = safe_sum_word64_test();
+    if (ret == 0)
+        ret = safe_sub_word64_test();
+    if (ret == 0)
+        ret = safe_sum_sword64_test();
+    if (ret == 0)
+        ret = safe_sub_sword64_test();
+#endif /* WORD64_AVAILABLE */
+
+    return ret;
+}
 
 WOLFSSL_TEST_SUBROUTINE wc_test_ret_t error_test(void)
 {
@@ -34546,9 +34914,9 @@ static const byte p521PubKey[] = {
 /* perform verify of signature and hash using public key */
 /* key is public Qx + public Qy */
 /* sig is r + s */
-static wc_test_ret_t crypto_ecc_verify(const byte *key, uint32_t keySz,
-    const byte *hash, uint32_t hashSz, const byte *sig, uint32_t sigSz,
-    uint32_t curveSz, int curveId)
+static wc_test_ret_t crypto_ecc_verify(const byte *key, word32 keySz,
+    const byte *hash, word32 hashSz, const byte *sig, word32 sigSz,
+    word32 curveSz, int curveId)
 {
     wc_test_ret_t ret;
     int verify_res = 0, count = 0;
@@ -34648,9 +35016,9 @@ static wc_test_ret_t crypto_ecc_verify(const byte *key, uint32_t keySz,
 }
 
 /* perform signature operation against hash using private key */
-static wc_test_ret_t crypto_ecc_sign(const byte *key, uint32_t keySz,
-    const byte *hash, uint32_t hashSz, byte *sig, uint32_t* sigSz,
-    uint32_t curveSz, int curveId, WC_RNG* rng)
+static wc_test_ret_t crypto_ecc_sign(const byte *key, word32 keySz,
+    const byte *hash, word32 hashSz, byte *sig, word32* sigSz,
+    word32 curveSz, int curveId, WC_RNG* rng)
 {
     wc_test_ret_t ret;
     int count = 0;
@@ -61295,6 +61663,273 @@ static int myCryptoDevCb(int devIdArg, wc_CryptoInfo* info, void* ctx)
         }
     }
 #endif /* !NO_SHA || !NO_SHA256 */
+#ifdef WOLF_CRYPTO_CB_COPY
+    else if (info->algo_type == WC_ALGO_TYPE_COPY) {
+#ifdef DEBUG_WOLFSSL
+        WOLFSSL_MSG_EX("CryptoDevCb: Copy Algo=%d Type=%d\n",
+                       info->copy.algo, info->copy.type);
+#endif
+        if (info->copy.algo == WC_ALGO_TYPE_HASH) {
+            switch (info->copy.type) {
+#ifndef NO_SHA
+                case WC_HASH_TYPE_SHA:
+                {
+                    wc_Sha* src = (wc_Sha*)info->copy.src;
+                    wc_Sha* dst = (wc_Sha*)info->copy.dst;
+                    src->devId = INVALID_DEVID;
+                    ret = wc_ShaCopy(src, dst);
+                    src->devId = devIdArg;
+                    if (ret == 0) {
+                        dst->devId = devIdArg;
+                    }
+                    break;
+                }
+#endif
+#ifdef WOLFSSL_SHA224
+                case WC_HASH_TYPE_SHA224:
+                {
+                    wc_Sha224* src = (wc_Sha224*)info->copy.src;
+                    wc_Sha224* dst = (wc_Sha224*)info->copy.dst;
+                    src->devId = INVALID_DEVID;
+                    ret = wc_Sha224Copy(src, dst);
+                    src->devId = devIdArg;
+                    if (ret == 0) {
+                        dst->devId = devIdArg;
+                    }
+                    break;
+                }
+#endif
+#ifndef NO_SHA256
+                case WC_HASH_TYPE_SHA256:
+                {
+                    /* Cast the source and destination to the correct type */
+                    /* Given as a void pointer initially for abstraction */
+                    wc_Sha256* src = (wc_Sha256*)info->copy.src;
+                    wc_Sha256* dst = (wc_Sha256*)info->copy.dst;
+                    /* set devId to invalid, so software is used */
+                    src->devId = INVALID_DEVID;
+                    ret = wc_Sha256Copy(src, dst);
+
+                    /* reset devId */
+                    src->devId = devIdArg;
+                    if (ret == 0) {
+                        /* Set the devId of the destination to the same as the */
+                        /* since we used the software implementation of copy */
+                        /* so dst would have been set to INVALID_DEVID */
+                        dst->devId = devIdArg;
+                    }
+
+                    break;
+                }
+#endif /* !NO_SHA256 */
+#ifdef WOLFSSL_SHA384
+                case WC_HASH_TYPE_SHA384:
+                {
+                    wc_Sha384* src = (wc_Sha384*)info->copy.src;
+                    wc_Sha384* dst = (wc_Sha384*)info->copy.dst;
+                    src->devId = INVALID_DEVID;
+                    ret = wc_Sha384Copy(src, dst);
+                    src->devId = devIdArg;
+                    if (ret == 0) {
+                        dst->devId = devIdArg;
+                    }
+                    break;
+                }
+#endif
+#ifdef WOLFSSL_SHA512
+                case WC_HASH_TYPE_SHA512:
+                {
+                    wc_Sha512* src = (wc_Sha512*)info->copy.src;
+                    wc_Sha512* dst = (wc_Sha512*)info->copy.dst;
+                    src->devId = INVALID_DEVID;
+                    ret = wc_Sha512Copy(src, dst);
+                    src->devId = devIdArg;
+                    if (ret == 0) {
+                        dst->devId = devIdArg;
+                    }
+                    break;
+                }
+#endif
+#if defined(WOLFSSL_SHA3) && !defined(WOLFSSL_NOSHA3_224)
+                case WC_HASH_TYPE_SHA3_224:
+                {
+                    wc_Sha3* src = (wc_Sha3*)info->copy.src;
+                    wc_Sha3* dst = (wc_Sha3*)info->copy.dst;
+                    src->devId = INVALID_DEVID;
+                    ret = wc_Sha3_224_Copy(src, dst);
+                    src->devId = devIdArg;
+                    if (ret == 0) {
+                        dst->devId = devIdArg;
+                    }
+                    break;
+                }
+#endif
+#if defined(WOLFSSL_SHA3) && !defined(WOLFSSL_NOSHA3_256)
+                case WC_HASH_TYPE_SHA3_256:
+                {
+                    wc_Sha3* src = (wc_Sha3*)info->copy.src;
+                    wc_Sha3* dst = (wc_Sha3*)info->copy.dst;
+                    src->devId = INVALID_DEVID;
+                    ret = wc_Sha3_256_Copy(src, dst);
+                    src->devId = devIdArg;
+                    if (ret == 0) {
+                        dst->devId = devIdArg;
+                    }
+                    break;
+                }
+#endif
+#if defined(WOLFSSL_SHA3) && !defined(WOLFSSL_NOSHA3_384)
+                case WC_HASH_TYPE_SHA3_384:
+                {
+                    wc_Sha3* src = (wc_Sha3*)info->copy.src;
+                    wc_Sha3* dst = (wc_Sha3*)info->copy.dst;
+                    src->devId = INVALID_DEVID;
+                    ret = wc_Sha3_384_Copy(src, dst);
+                    src->devId = devIdArg;
+                    if (ret == 0) {
+                        dst->devId = devIdArg;
+                    }
+                    break;
+                }
+#endif
+#if defined(WOLFSSL_SHA3) && !defined(WOLFSSL_NOSHA3_512)
+                case WC_HASH_TYPE_SHA3_512:
+                {
+                    wc_Sha3* src = (wc_Sha3*)info->copy.src;
+                    wc_Sha3* dst = (wc_Sha3*)info->copy.dst;
+                    src->devId = INVALID_DEVID;
+                    ret = wc_Sha3_512_Copy(src, dst);
+                    src->devId = devIdArg;
+                    if (ret == 0) {
+                        dst->devId = devIdArg;
+                    }
+                    break;
+                }
+#endif
+                default:
+                    ret = WC_NO_ERR_TRACE(NOT_COMPILED_IN);
+                    break;
+            }
+        }
+        else {
+            ret = WC_NO_ERR_TRACE(NOT_COMPILED_IN);
+        }
+    }
+#endif /* WOLF_CRYPTO_CB_COPY */
+#ifdef WOLF_CRYPTO_CB_FREE
+    else if (info->algo_type == WC_ALGO_TYPE_FREE) {
+#ifdef DEBUG_WOLFSSL
+        WOLFSSL_MSG_EX("CryptoDevCb: Free Algo=%d Type=%d\n",
+                       info->free.algo, info->free.type);
+#endif
+
+        if (info->free.algo == WC_ALGO_TYPE_HASH) {
+            switch (info->free.type) {
+#ifndef NO_SHA
+                case WC_HASH_TYPE_SHA:
+                {
+                    wc_Sha* sha = (wc_Sha*)info->free.obj;
+                    sha->devId = INVALID_DEVID;
+                    wc_ShaFree(sha);
+                    ret = 0;
+                    break;
+                }
+#endif
+#ifdef WOLFSSL_SHA224
+                case WC_HASH_TYPE_SHA224:
+                {
+                    wc_Sha224* sha = (wc_Sha224*)info->free.obj;
+                    sha->devId = INVALID_DEVID;
+                    wc_Sha224Free(sha);
+                    ret = 0;
+                    break;
+                }
+#endif
+#ifndef NO_SHA256
+                case WC_HASH_TYPE_SHA256:
+                {
+                    wc_Sha256* sha = (wc_Sha256*)info->free.obj;
+                    /* set devId to invalid, so software is used */
+                    sha->devId = INVALID_DEVID;
+
+                    /* Call the actual free function */
+                    wc_Sha256Free(sha);
+
+                    /* Note: devId doesn't need to be restored as object is freed */
+                    ret = 0;
+                    break;
+                }
+#endif
+#ifdef WOLFSSL_SHA384
+                case WC_HASH_TYPE_SHA384:
+                {
+                    wc_Sha384* sha = (wc_Sha384*)info->free.obj;
+                    sha->devId = INVALID_DEVID;
+                    wc_Sha384Free(sha);
+                    ret = 0;
+                    break;
+                }
+#endif
+#ifdef WOLFSSL_SHA512
+                case WC_HASH_TYPE_SHA512:
+                {
+                    wc_Sha512* sha = (wc_Sha512*)info->free.obj;
+                    sha->devId = INVALID_DEVID;
+                    wc_Sha512Free(sha);
+                    ret = 0;
+                    break;
+                }
+#endif
+#if defined(WOLFSSL_SHA3) && !defined(WOLFSSL_NOSHA3_224)
+                case WC_HASH_TYPE_SHA3_224:
+                {
+                    wc_Sha3* sha = (wc_Sha3*)info->free.obj;
+                    sha->devId = INVALID_DEVID;
+                    wc_Sha3_224_Free(sha);
+                    ret = 0;
+                    break;
+                }
+#endif
+#if defined(WOLFSSL_SHA3) && !defined(WOLFSSL_NOSHA3_256)
+                case WC_HASH_TYPE_SHA3_256:
+                {
+                    wc_Sha3* sha = (wc_Sha3*)info->free.obj;
+                    sha->devId = INVALID_DEVID;
+                    wc_Sha3_256_Free(sha);
+                    ret = 0;
+                    break;
+                }
+#endif
+#if defined(WOLFSSL_SHA3) && !defined(WOLFSSL_NOSHA3_384)
+                case WC_HASH_TYPE_SHA3_384:
+                {
+                    wc_Sha3* sha = (wc_Sha3*)info->free.obj;
+                    sha->devId = INVALID_DEVID;
+                    wc_Sha3_384_Free(sha);
+                    ret = 0;
+                    break;
+                }
+#endif
+#if defined(WOLFSSL_SHA3) && !defined(WOLFSSL_NOSHA3_512)
+                case WC_HASH_TYPE_SHA3_512:
+                {
+                    wc_Sha3* sha = (wc_Sha3*)info->free.obj;
+                    sha->devId = INVALID_DEVID;
+                    wc_Sha3_512_Free(sha);
+                    ret = 0;
+                    break;
+                }
+#endif
+                default:
+                    ret = WC_NO_ERR_TRACE(NOT_COMPILED_IN);
+                    break;
+            }
+        }
+        else {
+            ret = WC_NO_ERR_TRACE(NOT_COMPILED_IN);
+        }
+    }
+#endif /* WOLF_CRYPTO_CB_FREE */
 #ifndef NO_HMAC
     else if (info->algo_type == WC_ALGO_TYPE_HMAC) {
         if (info->hmac.hmac == NULL)
